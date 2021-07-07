@@ -32,12 +32,10 @@ public:
     // Methods
     bool read() override;
 
-    void inject_data(const uint8_t *data, uint16_t len) override;
-
     const char *name() const override { return "FEMTO"; }
 
 private:
-    bool parse(uint8_t temp);
+    bool parse(uint8_t data);
     bool process_message();
     uint32_t crc32_value(uint32_t icrc);
     uint32_t calculate_block_crc32(uint32_t length, uint8_t *buffer, uint32_t crc);
@@ -119,41 +117,22 @@ private:
         } sat_status[64];               /**< uav status of all satellites */
     };
 
-    /** save msg body buffer */
-    union PACKED msg_buffer_u {
-        femto_uav_status_t uav_status;
-        femto_uav_gps_t uav_gps;
 
-        uint8_t bytes[1024];
-    };
-
-    /** save msg header */
-    union PACKED msg_header_u {
-        femto_msg_header_t femto_header;
-        uint8_t data[28];
-    };
 
     struct PACKED femto_msg_parser_t
     {
-        enum
-        {
-            PREAMBLE1 = 0,
-            PREAMBLE2,
-            PREAMBLE3,
-            HEADERLENGTH,
-            HEADERDATA,
-            DATA,
-            CRC1,
-            CRC2,
-            CRC3,
-            CRC4,
-        } femto_decode_state;
-        
-        msg_buffer_u data;
+        union PACKED {
+            DEFINE_BYTE_ARRAY_METHODS
+            femto_uav_status_t uav_status;
+            femto_uav_gps_t uav_gps;
+        } body;
         uint32_t crc;
-        msg_header_u header;
+        union PACKED {
+            DEFINE_BYTE_ARRAY_METHODS
+            femto_msg_header_t msg_header;
+        } header;
         uint16_t read;
-    } femto_msg;
+    };
 
     const uint8_t FEMTO_PREAMBLE1 = 0xaa;
     const uint8_t FEMTO_PREAMBLE2 = 0x44;
@@ -163,15 +142,15 @@ private:
     const uint16_t FEMTO_MSG_ID_UAVSTATUS = 8017;
 
     const uint32_t CRC32_POLYNOMIAL = 0xEDB88320L;
-    
+
     static const char* const _initialisation_blob[];
-   
-    uint32_t crc_error_counter;
-    uint32_t last_injected_data_ms;
+    
+    uint8_t _decode_step;
+    femto_msg_parser_t _femto_msg;
+    uint32_t _msg_crc;
 
     uint8_t _init_blob_index;
     uint32_t _init_blob_time;
-
 
     bool _new_uavstatus;    /**< have new uav status */
     uint32_t _last_uav_status_time;

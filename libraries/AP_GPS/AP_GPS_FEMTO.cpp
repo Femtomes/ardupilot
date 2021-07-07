@@ -21,35 +21,30 @@
 #include "AP_GPS_FEMTO.h"
 
 
-extern const AP_HAL::HAL& hal;
+#define FEMTO_DEBUG 0
 
-#define FEMTO_DEBUGGING 0
-
-#if FEMTO_DEBUGGING
+#if FEMTO_DEBUG
 #include <cstdio>
  # define Debug(fmt, args ...)                  \
 do {                                            \
     printf("%s:%d: " fmt "\n",     \
                         __FUNCTION__, __LINE__, \
                         ## args);               \
-    hal.scheduler->delay(1);                    \
 } while(0)
 #else
  # define Debug(fmt, args ...)
 #endif
 
 const char* const AP_GPS_FEMTO::_initialisation_blob[] {
-    "\r\n\r\nunlogall\r\n",         /**< cleanup enviroment */
-    "log uavgpsb ontime 0.2\r\n",   /**< get uavgps */
-    "log uavstatus ontime 0.2\r\n", /**< get uavstatus */
+    "\r\n\r\nUNLOGALL\r\n",         /**< cleanup enviroment */
+    "LOG UAVGPSB ontime 0.2\r\n",   /**< get uavgps */
+    "LOG UAVSTATUSB ontime 0.2\r\n", /**< get uavstatus */
 };
 
 AP_GPS_FEMTO::AP_GPS_FEMTO(AP_GPS &_gps, AP_GPS::GPS_State &_state,
                        AP_HAL::UARTDriver *_port) :
-    AP_GPS_Backend(_gps, _state, _port)
+    AP_GPS_Backend(_gps, _state, _port),_decode_step(0)
 {
-    femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
-
     const char *init_str = _initialisation_blob[0];
     port->write((const uint8_t*)init_str, strlen(init_str));
 }
@@ -83,109 +78,125 @@ bool AP_GPS_FEMTO::read(void)
     return parsed;
 }
 
-bool AP_GPS_FEMTO::parse(uint8_t temp)
+bool AP_GPS_FEMTO::parse(uint8_t data)
 {
-    switch (femto_msg.femto_decode_state) {
-        default:
-        case femto_msg_parser_t::PREAMBLE1:
-            if (temp == FEMTO_PREAMBLE1) {
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE2;
-            }       
-            femto_msg.read = 0;
-            break;
-        case femto_msg_parser_t::PREAMBLE2:
-            if (temp == FEMTO_PREAMBLE2) {
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE3;
-            } else {
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
-            }
-            break;
-        case femto_msg_parser_t::PREAMBLE3:
-            if (temp == FEMTO_PREAMBLE3) {
-                femto_msg.femto_decode_state = femto_msg_parser_t::HEADERLENGTH;
-            } else {
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
-            }
-            break;
-        case femto_msg_parser_t::HEADERLENGTH:
-            Debug("FEMTO HEADERLENGTH\n");
-            femto_msg.header.data[0] = FEMTO_PREAMBLE1;
-            femto_msg.header.data[1] = FEMTO_PREAMBLE2;
-            femto_msg.header.data[2] = FEMTO_PREAMBLE3;
-            femto_msg.header.data[3] = temp;
-            femto_msg.header.femto_header.headerlength = temp;
-            femto_msg.femto_decode_state = femto_msg_parser_t::HEADERDATA;
-            femto_msg.read = 4;
-            break;
-        case femto_msg_parser_t::HEADERDATA:
-            if (femto_msg.read >= sizeof(femto_msg.header.data)) {
-                Debug("parse header overflow length=%u\n", (unsigned)femto_msg.read);
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
+    reset:
+        switch (_decode_step) {
+            default:
+            case 0: //preamble1
+                if (data == FEMTO_PREAMBLE1) {
+                    _decode_step++;
+                    _femto_msg.read = 1;
+                }       
                 break;
-            }
-            femto_msg.header.data[femto_msg.read] = temp;
-            femto_msg.read++;
-            if (femto_msg.read >= femto_msg.header.femto_header.headerlength) {
-                femto_msg.femto_decode_state = femto_msg_parser_t::DATA;
-            }
-            break;
-        case femto_msg_parser_t::DATA:
-            if (femto_msg.read >= sizeof(femto_msg.data)) {
-                Debug("parse data overflow length=%u msglength=%u\n", (unsigned)femto_msg.read,femto_msg.header.femto_header.messagelength);
-                femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
+            case 1: //preamble2
+                if (data == FEMTO_PREAMBLE2) {
+                    _decode_step++;
+                    _femto_msg.read++;
+                } else {
+                    _decode_step = 0;
+                    goto reset;
+                }
                 break;
-            }
-            femto_msg.data.bytes[femto_msg.read - femto_msg.header.femto_header.headerlength] = temp;
-            femto_msg.read++;
-            if (femto_msg.read >= (femto_msg.header.femto_header.messagelength + femto_msg.header.femto_header.headerlength)) {
-                Debug("FEMTO DATA exit\n");
-                femto_msg.femto_decode_state = femto_msg_parser_t::CRC1;
-            }
-            break;
-        case femto_msg_parser_t::CRC1:
-            femto_msg.crc = (uint32_t) (temp << 0);
-            femto_msg.femto_decode_state = femto_msg_parser_t::CRC2;
-            break;
-        case femto_msg_parser_t::CRC2:
-            femto_msg.crc += (uint32_t) (temp << 8);
-            femto_msg.femto_decode_state = femto_msg_parser_t::CRC3;
-            break;
-        case femto_msg_parser_t::CRC3:
-            femto_msg.crc += (uint32_t) (temp << 16);
-            femto_msg.femto_decode_state = femto_msg_parser_t::CRC4;
-            break;
-        case femto_msg_parser_t::CRC4:
-            femto_msg.crc += (uint32_t) (temp << 24);
-            femto_msg.femto_decode_state = femto_msg_parser_t::PREAMBLE1;
+            case 2: //preamble3
+                if (data == FEMTO_PREAMBLE3) {
+                   _decode_step++;
+                   _femto_msg.read++;
+                } else {
+                    _decode_step = 0;
+                    goto reset;
+                }
+                break;
+            case 3: //header
+                _decode_step++;
+                _femto_msg.read++;
 
-            uint32_t crc = calculate_block_crc32((uint32_t)femto_msg.header.femto_header.headerlength, (uint8_t *)&femto_msg.header.data, (uint32_t)0);
-            crc = calculate_block_crc32((uint32_t)femto_msg.header.femto_header.messagelength, (uint8_t *)&femto_msg.data, crc);
+                _femto_msg.header[0] = FEMTO_PREAMBLE1;
+                _femto_msg.header[1] = FEMTO_PREAMBLE2;
+                _femto_msg.header[2] = FEMTO_PREAMBLE3;
+                _femto_msg.header[3] = data;    //header length
+                if(_femto_msg.header.msg_header.headerlength > sizeof(_femto_msg.header)){
+                    Debug("Wrong header length:%u\n",_femto_msg.header.msg_header.headerlength);
+                    _decode_step = 0;
+                    goto reset;
+                }
+                break;
+            case 4: // header data
+                _femto_msg.header[_femto_msg.read] = data;
+                _femto_msg.read++;
+                if (_femto_msg.read >= _femto_msg.header.msg_header.headerlength) {
+                    if(_femto_msg.header.msg_header.messagelength > sizeof(_femto_msg.body)){
+                        Debug("Wrong message length:%u\n",_femto_msg.header.msg_header.messagelength);
+                        _decode_step = 0;
+                        goto reset;
+                    }
+                    _decode_step++;
+                    _msg_crc = calculate_block_crc32((uint32_t)_femto_msg.header.msg_header.headerlength, (uint8_t *)&_femto_msg.header, (uint32_t)0);
+                }
+                break;
+            case 5: //body data
+                _femto_msg.body[_femto_msg.read - _femto_msg.header.msg_header.headerlength] = data;
+                _femto_msg.read++;
+                if (_femto_msg.read >= (_femto_msg.header.msg_header.messagelength + _femto_msg.header.msg_header.headerlength)) {
+                    _decode_step++;
+                    _msg_crc = calculate_block_crc32((uint32_t)_femto_msg.header.msg_header.messagelength, (uint8_t *)&_femto_msg.body, _msg_crc);
+                }
+                break;
+            case 6: //CRC1
+                _femto_msg.crc = (uint32_t) (data << 0);
+                if(_femto_msg.crc != (_msg_crc & 0xFF)){
+                    Debug("CRC1 failed")
+                    _decode_step = 0;
+                    goto reset;
+                }
+                _decode_step++;
+                break;
+            case 7: //CRC2
+                _femto_msg.crc += (uint32_t) (data << 8);
+                if(_femto_msg.crc != (_msg_crc & 0xFFFF)){
+                    Debug("CRC2 failed")
+                    _decode_step = 0;
+                    goto reset;
+                }
+                _decode_step++;
+                break;
+            case 8: //CRC3
+                _femto_msg.crc += (uint32_t) (data << 16);
+                if(_femto_msg.crc != (_msg_crc & 0xFFFFFF)){
+                    Debug("CRC3 failed")
+                    _decode_step = 0;
+                    goto reset;
+                }
+                _decode_step++;
+                break;
+            case 9: //CRC4
+                _femto_msg.crc += (uint32_t) (data << 24);
+                _decode_step = 0;
 
-            if (femto_msg.crc == crc) {
+                if(_femto_msg.crc != _msg_crc){
+                    Debug("CRC4 failed")
+                    goto reset;
+                }
+                Debug("new message ,id:%u\n",_femto_msg.header.msg_header.messageid);
                 return process_message();   /**< One whole message received */
-            } else {
-                Debug("crc failed");
-                crc_error_counter++;
-            }
-            break;
-    }
+        }
 
     return false;
 }
 
 bool AP_GPS_FEMTO::process_message(void)
 {
-    uint16_t messageid = femto_msg.header.femto_header.messageid;
+    uint16_t messageid = _femto_msg.header.msg_header.messageid;
 
-    Debug("FEMTO process_message messid=%u\n",messageid);
+    Debug("FEMTO message messid=%u\n",messageid);
 
-    check_new_itow(femto_msg.header.femto_header.tow, femto_msg.header.femto_header.messagelength + femto_msg.header.femto_header.headerlength);
+    check_new_itow(_femto_msg.header.msg_header.tow, _femto_msg.header.msg_header.messagelength + _femto_msg.header.msg_header.headerlength);
     
     if (messageid == FEMTO_MSG_ID_UAVGPS) {  /**< uavgps */
-        const femto_uav_gps_t &uav_gps = femto_msg.data.uav_gps;
+        const femto_uav_gps_t &uav_gps = _femto_msg.body.uav_gps;
 
-        state.time_week = femto_msg.header.femto_header.week;
-        state.time_week_ms = (uint32_t) femto_msg.header.femto_header.tow;
+        state.time_week = _femto_msg.header.msg_header.week;
+        state.time_week_ms = (uint32_t) _femto_msg.header.msg_header.tow;
 
         _last_uav_gps_time = state.time_week_ms;
 
@@ -241,11 +252,11 @@ bool AP_GPS_FEMTO::process_message(void)
     }
 
     if (messageid == FEMTO_MSG_ID_UAVSTATUS) { /**< uavstatus */
-        const femto_uav_status_t &uavstatus = femto_msg.data.uav_status;
+        const femto_uav_status_t &uavstatus = _femto_msg.body.uav_status;
 
         state.rtk_age_ms = uavstatus.diff_age * 1000;
 
-        _last_uav_status_time = (uint32_t) femto_msg.header.femto_header.tow;
+        _last_uav_status_time = (uint32_t) _femto_msg.header.msg_header.tow;
 
         _new_uavstatus = true;
     }
@@ -253,21 +264,11 @@ bool AP_GPS_FEMTO::process_message(void)
     /** ensure uavstatus and uavgps stay insync */
     if (_new_uavstatus && _new_uavgps && _last_uav_status_time == _last_uav_gps_time) {
         _new_uavstatus = _new_uavgps = false;
-    
+
         return true;
     }
 
     return false;
-}
-
-void AP_GPS_FEMTO::inject_data(const uint8_t *data, uint16_t len)
-{
-    if (port->txspace() > len) {
-        last_injected_data_ms = AP_HAL::millis();
-        port->write(data, len);
-    } else {
-        Debug("FEMTO: Not enough TXSPACE");
-    }
 }
 
 uint32_t AP_GPS_FEMTO::crc32_value(uint32_t icrc)
