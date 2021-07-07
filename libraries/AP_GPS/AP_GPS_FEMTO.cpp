@@ -43,7 +43,14 @@ const char* const AP_GPS_FEMTO::_initialisation_blob[] {
 
 AP_GPS_FEMTO::AP_GPS_FEMTO(AP_GPS &_gps, AP_GPS::GPS_State &_state,
                        AP_HAL::UARTDriver *_port) :
-    AP_GPS_Backend(_gps, _state, _port),_decode_step(0)
+    AP_GPS_Backend(_gps, _state, _port),
+    _decode_step(0),
+    _init_blob_index(0),
+    _init_blob_time(0),
+    _new_uavstatus(false),
+    _last_uav_status_time(0),
+    _new_uavgps(false),
+    _last_uav_gps_time(0)
 {
     const char *init_str = _initialisation_blob[0];
     port->write((const uint8_t*)init_str, strlen(init_str));
