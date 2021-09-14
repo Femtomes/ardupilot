@@ -38,8 +38,8 @@ public:
 private:
     virtual uint16_t get_message_body_length_from_header_buff() override{return _femto_msg.header.msg_header.messagelength;};
     virtual uint8_t get_message_header_length_from_header_buff() override{return _femto_msg.header.msg_header.headerlength;};
-    virtual uint8_t *get_message_header_buff() override{return (uint8_t *)&_femto_msg.header};
-    virtual uint8_t *get_message_body_buff() override{return (uint8_t *)&_femto_msg.body};
+    virtual uint8_t *get_message_header_buff() override{return (uint8_t *)&_femto_msg.header;};
+    virtual uint8_t *get_message_body_buff() override{return (uint8_t *)&_femto_msg.body;};
     virtual bool process_message() override;
 
     /**
