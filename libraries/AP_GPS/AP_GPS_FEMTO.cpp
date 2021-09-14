@@ -44,7 +44,7 @@ const char* const AP_GPS_FEMTO::_initialisation_blob[] {
 AP_GPS_FEMTO::AP_GPS_FEMTO(AP_GPS &_gps, AP_GPS::GPS_State &_state,
                        AP_HAL::UARTDriver *_port) :
     AP_GPS_Backend(_gps, _state, _port),
-    AP_GPS_BinaryCRCMessageParser({FEMTO_PREAMBLE1, FEMTO_PREAMBLE2, FEMTO_PREAMBLE3},4,sizeof(_femto_msg.header),sizeof(_femto_msg.body))
+    AP_GPS_BinaryCRCMessageParser({FEMTO_PREAMBLE1, FEMTO_PREAMBLE2, FEMTO_PREAMBLE3},4,sizeof(_femto_msg.header),sizeof(_femto_msg.body)),
     _init_blob_index(0),
     _init_blob_time(0),
     _new_uavstatus(false),
