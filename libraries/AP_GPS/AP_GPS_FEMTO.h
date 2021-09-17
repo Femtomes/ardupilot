@@ -136,12 +136,12 @@ private:
         uint16_t read;
     };
 
-    const uint8_t FEMTO_PREAMBLE1 = 0xaa;
-    const uint8_t FEMTO_PREAMBLE2 = 0x44;
-    const uint8_t FEMTO_PREAMBLE3 = 0x12;
+    static const uint8_t FEMTO_PREAMBLE1 = 0xaa;
+    static const uint8_t FEMTO_PREAMBLE2 = 0x44;
+    static const uint8_t FEMTO_PREAMBLE3 = 0x12;
 
-    const uint16_t FEMTO_MSG_ID_UAVGPS = 8001;
-    const uint16_t FEMTO_MSG_ID_UAVSTATUS = 8017;
+    static const uint16_t FEMTO_MSG_ID_UAVGPS = 8001;
+    static const uint16_t FEMTO_MSG_ID_UAVSTATUS = 8017;
 
     static const char* const _initialisation_blob[];
 
