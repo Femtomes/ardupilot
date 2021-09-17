@@ -139,6 +139,7 @@ public:
     friend class RC_Channel_Plane;
     friend class RC_Channels_Plane;
     friend class Tailsitter;
+    friend class Tiltrotor;
 
     friend class Mode;
     friend class ModeCircle;
@@ -929,6 +930,7 @@ private:
     void do_set_home(const AP_Mission::Mission_Command& cmd);
     bool start_command_callback(const AP_Mission::Mission_Command &cmd);
     bool verify_command_callback(const AP_Mission::Mission_Command& cmd);
+    float get_wp_radius() const;
 
     // commands.cpp
     void set_guided_WP(void);
@@ -1030,7 +1032,6 @@ private:
     void read_rangefinder(void);
     void read_airspeed(void);
     void rpm_update(void);
-    void accel_cal_update(void);
 
     // system.cpp
     void init_ardupilot() override;
